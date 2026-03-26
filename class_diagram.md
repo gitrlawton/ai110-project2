@@ -3,6 +3,7 @@ classDiagram
     class Owner {
         +String name
         +int available_minutes
+        +list preferences
         +add_task(task)
         +remove_task(task)
         +get_tasks() list
@@ -21,10 +22,11 @@ classDiagram
         +int duration_minutes
         +int priority
         +String category
-        +is_schedulable(available_minutes) bool
+        +bool completed
     }
 
     class Scheduler {
+        -list _plan
         +generate_plan() list
         +explain() str
     }
@@ -32,5 +34,4 @@ classDiagram
     Owner "1" --> "1" Pet : has
     Owner "1" --> "0..*" Task : manages
     Scheduler --> Owner : uses
-    Scheduler --> Task : schedules
 ```

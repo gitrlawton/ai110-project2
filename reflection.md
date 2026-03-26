@@ -14,7 +14,11 @@
 **b. Design changes**
 
 - Did your design change during implementation?
+  - Yes — reviewing the initial skeleton against the README revealed three gaps that required changes before any logic was written.
 - If yes, describe at least one change and why you made it.
+  - **Removed `is_schedulable()` from `Task`:** The initial UML placed this method on `Task`, but a task shouldn't need to know the remaining time budget — that's runtime state owned by the scheduler. Moving this check inside `Scheduler.generate_plan()` keeps `Task` a pure data object and avoids leaking scheduling logic into the wrong class.
+  - **Added `completed: bool` to `Task`:** The README requires users to add and edit tasks, but the original `Task` had no way to track whether a task had been completed. Without this field, the scheduler can't distinguish pending from done tasks.
+  - **Added `preferences: list[str]` to `Owner` and `_plan` to `Scheduler`:** The README explicitly lists "owner preferences" as a scheduler constraint, but the original design had no field to store them. Additionally, `Scheduler.explain()` had no data to work from since `generate_plan()` stored nothing — adding `self._plan` lets `explain()` reference the last generated schedule.
 
 ---
 
