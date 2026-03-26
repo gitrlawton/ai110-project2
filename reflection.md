@@ -5,7 +5,11 @@
 **a. Initial design**
 
 - Briefly describe your initial UML design.
+  - The design is organized around three core user actions: (1) entering owner and pet information, (2) adding and editing pet care tasks, and (3) generating a daily care schedule. Each action maps to a distinct layer of the system — a data entry interface, a task management model, and a scheduling engine — so that responsibilities stay separated and each piece can be built and tested independently.
 - What classes did you include, and what responsibilities did you assign to each?
+  - **Owner / Pet** — holds the profile data a user enters in core action 1 (owner name, pet name/type, daily time available, and any care preferences). This context is passed to the scheduler so it can make personalized decisions.
+  - **Task** — represents a single care activity created in core action 2 (e.g., walk, feeding, medication, grooming). Each task stores at minimum a name, estimated duration, and priority level, and supports editing so the user can refine the list over time.
+  - **Scheduler** — implements core action 3 by accepting the task list and owner/pet context, applying constraints (available time, priority), and producing a ranked daily plan along with a plain-language explanation of why each task was placed where it was.
 
 **b. Design changes**
 
