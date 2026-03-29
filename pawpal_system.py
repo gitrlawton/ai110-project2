@@ -1,3 +1,4 @@
+import json
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
@@ -13,6 +14,23 @@ class Pet:
         """Return a readable one-line description of this pet."""
         needs = f", special needs: {self.special_needs}" if self.special_needs else ""
         return f"{self.name} ({self.species}, age {self.age}{needs})"
+
+    def to_dict(self) -> dict:
+        return {
+            "name": self.name,
+            "species": self.species,
+            "age": self.age,
+            "special_needs": self.special_needs,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Pet":
+        return cls(
+            name=d["name"],
+            species=d["species"],
+            age=d["age"],
+            special_needs=d.get("special_needs", ""),
+        )
 
 
 @dataclass
@@ -30,6 +48,34 @@ class Task:
     def mark_complete(self) -> None:
         """Mark this task as completed."""
         self.completed = True
+
+    def to_dict(self) -> dict:
+        return {
+            "name": self.name,
+            "duration_minutes": self.duration_minutes,
+            "priority": self.priority,
+            "category": self.category,
+            "time": self.time,
+            "pet_name": self.pet_name,
+            "frequency": self.frequency,
+            "due_date": self.due_date.isoformat() if self.due_date else None,
+            "completed": self.completed,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Task":
+        raw_date = d.get("due_date")
+        return cls(
+            name=d["name"],
+            duration_minutes=d["duration_minutes"],
+            priority=d["priority"],
+            category=d["category"],
+            time=d.get("time", ""),
+            pet_name=d.get("pet_name", ""),
+            frequency=d.get("frequency", "once"),
+            due_date=date.fromisoformat(raw_date) if raw_date else None,
+            completed=d.get("completed", False),
+        )
 
 
 class Owner:
@@ -52,16 +98,100 @@ class Owner:
         """Return a copy of all tasks belonging to this owner."""
         return list(self._tasks)
 
+    def save_to_json(self, path: str = "data.json") -> None:
+        """Persist owner, pet, and all tasks to a JSON file."""
+        data = {
+            "name": self.name,
+            "available_minutes": self.available_minutes,
+            "preferences": self.preferences,
+            "pet": self.pet.to_dict(),
+            "tasks": [t.to_dict() for t in self.get_tasks()],
+        }
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+
+    @classmethod
+    def load_from_json(cls, path: str = "data.json") -> "Owner":
+        """Reconstruct an Owner (with pet and tasks) from a JSON file.
+
+        Raises FileNotFoundError if the file does not exist.
+        """
+        with open(path) as f:
+            data = json.load(f)
+        pet = Pet.from_dict(data["pet"])
+        owner = cls(
+            name=data["name"],
+            available_minutes=data["available_minutes"],
+            pet=pet,
+            preferences=data.get("preferences", []),
+        )
+        for task_dict in data.get("tasks", []):
+            owner.add_task(Task.from_dict(task_dict))
+        return owner
+
 
 class Scheduler:
-    def __init__(self, owner: Owner):
+    def __init__(self, owner: Owner, priority_weight: float = 1.0, urgency_weight: float = 1.0):
         self.owner = owner
+        self.priority_weight = priority_weight
+        self.urgency_weight = urgency_weight
         self._plan: list[Task] = []
+
+    _CATEGORY_BOOST: dict[str, float] = {
+        "medication": 2.0,
+        "feeding": 1.0,
+        "exercise": 0.0,
+        "enrichment": 0.0,
+        "grooming": 0.0,
+        "other": 0.0,
+    }
+
+    def score_task(self, task: Task, today: date | None = None) -> float:
+        """Compute a composite scheduling score for a task.
+
+        score = (priority * priority_weight) + (urgency * urgency_weight) + category_boost
+
+        urgency is derived from days until due_date:
+            overdue       -> 6.0
+            due today     -> 5.0
+            1 day out     -> 4.0
+            2 days out    -> 3.0
+            3 days out    -> 2.0
+            4-6 days out  -> 1.0
+            7+ days / None -> 0.0
+
+        category_boost: medication=+2.0, feeding=+1.0, all others=+0.0
+        """
+        if today is None:
+            today = date.today()
+
+        if task.due_date is None:
+            urgency = 0.0
+        else:
+            days = (task.due_date - today).days
+            if days < 0:
+                urgency = 6.0
+            elif days == 0:
+                urgency = 5.0
+            elif days == 1:
+                urgency = 4.0
+            elif days == 2:
+                urgency = 3.0
+            elif days == 3:
+                urgency = 2.0
+            elif days <= 6:
+                urgency = 1.0
+            else:
+                urgency = 0.0
+
+        category_boost = self._CATEGORY_BOOST.get(task.category, 0.0)
+        return (task.priority * self.priority_weight) + (urgency * self.urgency_weight) + category_boost
 
     def generate_plan(self) -> list[Task]:
         """Select and order incomplete tasks by priority until the time budget is exhausted."""
         pending = [t for t in self.owner.get_tasks() if not t.completed]
-        sorted_tasks = sorted(pending, key=lambda t: t.priority, reverse=True)
+        today = date.today()
+        sorted_tasks = sorted(pending, key=lambda t: self.score_task(t, today), reverse=True)
 
         self._plan = []
         minutes_remaining = self.owner.available_minutes
@@ -155,11 +285,28 @@ class Scheduler:
         return tasks
 
     def sort_by_time(self) -> list[Task]:
-        """Return tasks sorted by their scheduled start time (HH:MM) ascending."""
-        return sorted(
-            self._plan,
-            key=lambda t: (int(t.time.split(":")[0]), int(t.time.split(":")[1]))
-        )
+        """Return the plan sorted by start time (HH:MM) ascending; untimed tasks sort last."""
+        def _key(t: Task) -> tuple[int, int]:
+            if not t.time:
+                return (24, 0)   # sentinel — after any valid HH:MM
+            h, m = t.time.split(":")
+            return (int(h), int(m))
+        return sorted(self._plan, key=_key)
+
+    def sort_by_priority_then_time(self) -> list[Task]:
+        """Return the plan sorted by priority descending, then by start time ascending.
+
+        Within the same priority level, timed tasks are ordered chronologically;
+        untimed tasks appear after all timed tasks in that priority group.
+        """
+        def _key(t: Task) -> tuple[int, int, int]:
+            if not t.time:
+                h, m = 24, 0   # sentinel — after any valid HH:MM
+            else:
+                h, m = t.time.split(":")
+                h, m = int(h), int(m)
+            return (-t.priority, h, m)
+        return sorted(self._plan, key=_key)
 
     def explain(self) -> str:
         """Return a plain-language summary of the scheduled and skipped tasks."""
@@ -173,13 +320,31 @@ class Scheduler:
             "",
             f"Scheduled {len(self._plan)} task(s)  —  {planned_minutes} of {self.owner.available_minutes} min used:",
         ]
+        today = date.today()
         for task in self._plan:
-            lines.append(f"  [+] [{task.priority}] {task.name} ({task.duration_minutes} min, {task.category})")
+            score = self.score_task(task, today)
+            urgency_note = ""
+            if task.due_date is not None:
+                days = (task.due_date - today).days
+                if days < 0:
+                    urgency_note = f" [OVERDUE by {abs(days)}d]"
+                elif days == 0:
+                    urgency_note = " [DUE TODAY]"
+                elif days <= 3:
+                    urgency_note = f" [due in {days}d]"
+            lines.append(
+                f"  [+] [{task.priority}] {task.name} ({task.duration_minutes} min, {task.category})"
+                f"  score={score:.2f}{urgency_note}"
+            )
 
         if self._skipped:
             lines.append(f"\nSkipped {len(self._skipped)} task(s) -- insufficient time remaining:")
             for task in self._skipped:
-                lines.append(f"  [-] [{task.priority}] {task.name} ({task.duration_minutes} min)")
+                score = self.score_task(task, today)
+                lines.append(f"  [-] [{task.priority}] {task.name} ({task.duration_minutes} min)  score={score:.2f}")
 
-        lines.append("\nTasks are ordered highest-to-lowest priority so critical care always fits first.")
+        lines.append(
+            f"\nTasks are ordered by composite score = "
+            f"(priority x {self.priority_weight}) + (urgency x {self.urgency_weight}) + category_boost."
+        )
         return "\n".join(lines)
