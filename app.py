@@ -145,15 +145,59 @@ if st.button("Generate schedule"):
     if not plan:
         st.warning("No tasks could be scheduled. Add some tasks or increase available time.")
     else:
-        st.success(f"Scheduled {len(plan)} task(s)!")
+        # ── Conflict warnings ────────────────────────────────────────────────
+        # Shown before the plan so the owner sees problems immediately.
+        # Each warning names the overlapping tasks and their shared time slot
+        # so the owner knows exactly what to reschedule.
+        conflicts = scheduler.detect_conflicts()
+        if conflicts:
+            st.error(
+                f"⚠️ {len(conflicts)} time conflict(s) found — "
+                "two or more tasks are scheduled at the same time. "
+                "Review the conflicts below and adjust task times before starting your day."
+            )
+            for msg in conflicts:
+                st.warning(msg)
+        else:
+            st.success(f"Schedule ready — {len(plan)} task(s), no conflicts.")
+
+        # ── Sort display order ───────────────────────────────────────────────
+        # Tasks that have a scheduled time are sorted chronologically.
+        # Tasks with no time set are appended at the end (unscheduled).
+        # This avoids the IndexError that sort_by_time raises on empty strings.
+        timed = sorted(
+            [t for t in plan if t.time],
+            key=lambda t: (int(t.time.split(":")[0]), int(t.time.split(":")[1])),
+        )
+        untimed = [t for t in plan if not t.time]
+        display_order = timed + untimed
+
+        st.write("**Your plan for today:**")
         st.table([
             {
+                "Time": t.time if t.time else "—",
                 "Task": t.name,
+                "Pet": t.pet_name if t.pet_name else "—",
                 "Duration (min)": t.duration_minutes,
                 "Priority": t.priority,
                 "Category": t.category,
             }
-            for t in plan
+            for t in display_order
         ])
+
+        # ── Skipped tasks ────────────────────────────────────────────────────
+        skipped = scheduler.filter_tasks(completed=False)
+        skipped = [t for t in skipped if t not in plan]
+        if skipped:
+            with st.expander(f"⏭ {len(skipped)} task(s) skipped — not enough time remaining"):
+                st.table([
+                    {
+                        "Task": t.name,
+                        "Duration (min)": t.duration_minutes,
+                        "Priority": t.priority,
+                    }
+                    for t in skipped
+                ])
+
         with st.expander("Why this plan?"):
             st.text(scheduler.explain())

@@ -27,24 +27,16 @@
 **a. Constraints and priorities**
 
 - What constraints does your scheduler consider (for example: time, priority, preferences)?
-  - **Time budget** — `generate_plan()` tracks `minutes_remaining` and only admits a task if its `duration_minutes` fits within what's left. This is the hard outer constraint; no other factor can override it.
-  - **Priority** — tasks are sorted highest-to-lowest before the greedy pass, so higher-priority care (feeding, walks) is guaranteed a slot before lower-priority tasks compete for leftover time.
-  - **Completion status** — already-completed tasks are filtered out of the candidate list at the start of `generate_plan()`, so recurring tasks that were marked done (via `mark_task_complete()`) don't re-enter the same day's plan.
-  - **Scheduled start time** — the `time` field enables `sort_by_time()` and `detect_conflicts()`, giving the scheduler awareness of when tasks are placed, not just whether they fit.
-  - **Recurrence / due date** — `frequency` and `due_date` on `Task` let `mark_task_complete()` auto-generate the next occurrence with an accurate `timedelta`, so daily and weekly routines stay continuous without manual re-entry.
+  - Time budget, task priority, completion status, scheduled start time, and recurrence frequency.
 - How did you decide which constraints mattered most?
-  - **Time is the non-negotiable constraint** because an owner with 75 minutes simply cannot do 120 minutes of tasks — exceeding it isn't a tradeoff, it's impossible. It acts as the gate that all other constraints operate within.
-  - **Priority ranks second** because pet care has genuine urgency differences: skipping medication or feeding has real health consequences, while skipping a grooming session does not. Sorting by priority before the greedy pass ensures critical care survives a tight budget.
-  - **Completion status and recurrence were added later** once it became clear that a one-shot daily plan couldn't model real pet ownership, where the same tasks repeat every day or week. These constraints make the scheduler stateful across time rather than a single-use generator.
+  - Time is non-negotiable (you can't do more than the budget allows), priority ranks second because missing medication or feeding has real health consequences, and completion status and recurrence were added once it was clear a one-shot plan couldn't model daily pet ownership.
 
 **b. Tradeoffs**
 
 - Describe one tradeoff your scheduler makes.
-  - **Conflict detection checks for exact start-time matches only, not overlapping durations.** `detect_conflicts()` groups tasks by their `time` string and warns when two tasks share the same slot (e.g., both at `"15:00"`). It does not check whether a task's duration causes it to run into the next task's start time — so a 30-minute walk starting at `"07:00"` and a 10-minute feeding starting at `"07:15"` would not trigger a warning, even though they overlap by 15 minutes in reality.
+  - `detect_conflicts()` flags tasks that share the exact same `HH:MM` slot but does not check whether a task's duration overlaps the next task's start time.
 - Why is that tradeoff reasonable for this scenario?
-  - **It matches the precision of the input data.** Tasks are given a single `time` string, not a start and end timestamp. Computing duration-based overlap would require converting `"HH:MM"` strings to integers, adding `duration_minutes`, and comparing ranges — adding further complexity.
-  - **Pet care tasks are rarely back-to-back at minute precision.** An owner scheduling a walk, a feeding, and a grooming session across a morning is thinking in rough time blocks, not tight intervals. Exact-match detection catches the real mistake — accidentally booking two things at the same stated time — without over-engineering.
-  - **The warning model stays non-blocking by design.** If the scheduler computed full overlap ranges and found partial conflicts, it would face pressure to resolve them automatically, which could silently reorder or drop tasks. Returning a warning string and leaving the decision to the owner is safer: the owner knows their actual routine better than the algorithm does.
+  - Tasks only store a single time string, not a start and end timestamp, so duration-based overlap would require extra parsing complexity; pet care tasks are also typically scheduled in rough time blocks rather than back-to-back at minute precision, making exact-match detection sufficient for the real mistake an owner would make.
 
 ---
 
@@ -53,12 +45,16 @@
 **a. How you used AI**
 
 - How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)?
+  - Creating and updating the Mermaid diagram, generating class and method stubs, and drafting tests.
 - What kinds of prompts or questions were most helpful?
+  - Detailed, well-formed prompts that gave the AI clear context about what was needed and why.
 
 **b. Judgment and verification**
 
 - Describe one moment where you did not accept an AI suggestion as-is.
+  - The AI proposed class changes after the UML was already finalized, and I rejected them to stay consistent with the agreed design.
 - How did you evaluate or verify what the AI suggested?
+  - Using "Ask before edits" mode to review each proposed change before it was applied, confirming it was actually necessary.
 
 ---
 
@@ -67,12 +63,16 @@
 **a. What you tested**
 
 - What behaviors did you test?
+  - Priority ordering, time budget enforcement, completed-task exclusion, daily and weekly recurrence, conflict detection, and chronological sorting.
 - Why were these tests important?
+  - These cover the scheduler's core contract — a wrong priority order, missed budget check, or bad recurrence date could cause a pet owner to miss medication or feeding with no visible error.
 
 **b. Confidence**
 
 - How confident are you that your scheduler works correctly?
+  - 3 out of 5 — all 16 tests pass, but a known `IndexError` in `sort_by_time()` on empty time strings, no UI-layer tests, and an untested clock-dependent fallback in `mark_task_complete()` limit full confidence.
 - What edge cases would you test next if you had more time?
+  - Mixed timed and untimed tasks in `sort_by_time()`, `mark_task_complete()` with `due_date=None` using a mocked clock, and both `filter_tasks()` filters applied simultaneously.
 
 ---
 
@@ -81,11 +81,14 @@
 **a. What went well**
 
 - What part of this project are you most satisfied with?
+  - Satisfied with the project overall, though the UI could be more polished and practically useful as a real pet scheduling tool.
 
 **b. What you would improve**
 
 - If you had another iteration, what would you improve or redesign?
+  - Use Kotlin and Jetpack Compose instead, to build a native Android app rather than a web-based Streamlit prototype.
 
 **c. Key takeaway**
 
 - What is one important thing you learned about designing systems or working with AI on this project?
+  - Different class designs can all be reasonably justified — there isn't one right answer, and the arguments for a design matter as much as the design itself.

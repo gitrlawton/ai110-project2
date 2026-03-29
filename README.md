@@ -22,6 +22,16 @@ Your final app should:
 - Display the plan clearly (and ideally explain the reasoning)
 - Include tests for the most important scheduling behaviors
 
+## Features
+
+- **Priority-based scheduling** — the scheduler sorts all pending tasks by priority (1–5) and greedily fills the owner's time budget highest-first, so critical care always fits before lower-priority tasks are considered.
+- **Time budget enforcement** — tasks that would exceed the remaining available minutes are skipped and surfaced in a "Skipped tasks" panel in the UI, so the owner always sees what didn't make the cut and why.
+- **Chronological sorting** — the daily plan is displayed in ascending start-time order (`HH:MM`), giving the owner a readable, time-ordered view of their day rather than a priority-ranked list.
+- **Conflict detection** — after a plan is generated, the scheduler groups tasks by their scheduled time slot and flags any slot containing more than one task, naming each conflicting task so the owner knows exactly what to reschedule.
+- **Daily and weekly recurrence** — marking a task complete automatically creates the next occurrence: `daily` tasks advance by one day, `weekly` tasks by seven days. One-off tasks produce no follow-up.
+- **Per-pet task filtering** — tasks can be filtered by pet name (case-insensitive) or completion status, supporting owners who manage care for more than one animal.
+- **Plan explanation** — a plain-language summary shows how many tasks were scheduled, how many minutes were used out of the available budget, and which tasks were skipped, giving the owner full visibility into the scheduling decisions.
+
 ## Getting started
 
 ### Setup
